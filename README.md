@@ -111,6 +111,58 @@ Reuse batch IDs across runs to skip the purchase + usability wait:
 MUTABLE_BATCH_ID=<id> IMMUTABLE_BATCH_ID=<id> npm test
 ```
 
+## Second experiment: one stamp, many values
+
+`npm run test:divergence` (`same-stamp-divergence-test.ts`) demonstrates a related
+problem: **a single postage stamp can authorize many different values at the same
+address, and different nodes then serve different content.**
+
+A stamp signs only the chunk *address*, not the payload — and a SOC's address is
+`keccak256(identifier ‖ owner)`, independent of payload. So the script:
+
+1. mints **one** envelope (one stamp: fixed `batchID` + `index` + `timestamp` +
+   `signature`) for a SOC address via `bee.createEnvelope`,
+2. uploads a **different** payload to each node *in parallel*, all carrying that one
+   envelope,
+3. reads the SOC back from every node.
+
+```bash
+npm run test:divergence
+# reuse a batch you already own to skip the purchase:
+BATCH_ID=<id> npm run test:divergence
+```
+
+Sample result — the same address resolves to different values on different nodes:
+
+```
+minted ONE envelope (shared by every upload):
+  batchId   = fb7f9dc0…
+  index     = 0000330000000000
+  timestamp = 18b8abd71ef6bcae
+
+http://localhost:1633  … wrote "written-by …:1633"  | now serves "written-by …:16332"  [STORER]
+http://localhost:16331 … wrote "written-by …:16331" | now serves "written-by …:16332"
+http://localhost:16332 … wrote "written-by …:16332" | now serves "written-by …:16331"
+http://localhost:16333 … wrote "written-by …:16333" | now serves "written-by …:16332"
+
+✅ Problem demonstrated: ONE stamp, MANY values.
+```
+
+Each node keeps the **first value it saw** for that address, so there is no single
+source of truth. It's a race: whichever write reaches a node (directly or via pushsync)
+first wins there. Eventually pushsync tends to converge reads on the responsible
+storer's first-seen value — so the divergence is a *snapshot*; re-run (each run uses a
+fresh address) if a run happens to converge.
+
+### Config
+
+| Env | Default | Purpose |
+| --- | --- | --- |
+| `BEE_API_URL` | `http://localhost:1633` | node that mints the envelope; must own `BATCH_ID` |
+| `CLUSTER_NODE_URLS` | the 4 local nodes | nodes to write to / read from |
+| `BATCH_ID` | _(buys one)_ | batch to use (must be owned by `BEE_API_URL`'s node) |
+| `DEFERRED` | `true` | keeps each node's local copy so divergence is visible |
+
 ## Caveats
 
 - This is a **closed local dev cluster**. On a tiny cluster the SOC address can be far
@@ -119,6 +171,8 @@ MUTABLE_BATCH_ID=<id> IMMUTABLE_BATCH_ID=<id> npm test
   `CLUSTER_NODE_URLS`; the true storer may be a node you don't control.
 - If you set `DEFERRED=false` and uploads hang for ~30s, that's the Bee public-
   reachability issue on the bridge network, not this script.
+- The divergence demo is timing-sensitive (a pre-convergence snapshot). A run may show
+  fewer distinct values if pushsync converges quickly; just re-run.
 
 ## License
 
