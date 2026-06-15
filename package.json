@@ -8,7 +8,8 @@
     "cluster:start": "bee-compose start --full 4",
     "cluster:stop": "bee-compose stop",
     "test": "tsx mutable-batch-test.ts",
-    "test:divergence": "tsx same-stamp-divergence-test.ts"
+    "test:divergence": "tsx same-stamp-divergence-test.ts",
+    "test:cac-collision": "tsx cac-slot-collision-test.ts"
   },
   "dependencies": {
     "@ethersphere/bee-js": "^11.1.1"
